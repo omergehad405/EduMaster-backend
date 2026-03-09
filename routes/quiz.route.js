@@ -1,148 +1,83 @@
-const express = require("express")
-const router = express.Router()
-const fs = require('fs');
-const PDFParser = require('pdf2json');
-const upload = require("../App/middlewares/upload")
-const asyncWrapper = require("../App/middlewares/asyncWrapper")
-const appError = require("../utils/appError")
+// routes/quizzes.js - FULL ROUTER
+const express = require("express");
+const router = express.Router();
+const upload = require("../App/middlewares/upload");
+const quizController = require("../App/controllers/quiz.controllers");
+const verifyToken = require("../App/middlewares/verifyToken");
+const asyncWrapper = require("../App/middlewares/asyncWrapper");
+const User = require("../App/models/user.module");
 
-router.post('/generate', upload.single('file'), asyncWrapper(async (req, res, next) => {
-    const { type = 'mcq', time = 30, count = 5 } = req.body;
-    const file = req.file;
+router.post('/generate', upload.single('file'), quizController.generateQuiz);
+router.post('/submit', verifyToken, quizController.submitQuiz);
+router.get('/my', verifyToken, quizController.my);
+router.get('/completed/:completedId', verifyToken, asyncWrapper(async (req, res) => {
+    const { completedId } = req.params;
 
-    console.log('🎯 QUIZ GENERATION STARTED:', { type, time, count, file: file?.originalname });
+    console.log('🔍 Searching for quiz:', completedId);
 
-    if (!file) return next(new appError('File required', 400));
-
-    // Extract content
-    let content = '';
-    try {
-        if (file.mimetype === 'application/pdf') {
-            const buffer = fs.readFileSync(file.path);
-            const pdfParser = new PDFParser();
-
-            content = await new Promise((resolve, reject) => {  // ✅ FIXED: Added reject
-                pdfParser.on('pdfParser_dataReady', (pdfData) => {
-                    const text = pdfData.Pages?.map(page =>
-                        page.Texts?.map(t => decodeURIComponent(t.R?.[0]?.T || '')).join(' ')
-                    ).join('\n\n') || '';
-                    console.log('✅ PDF extracted:', text.slice(0, 200));
-                    resolve(text.slice(0, 15000));
-                });
-                pdfParser.on('pdfParser_dataError', (err) => {
-                    console.error('❌ PDF Parse Error:', err);
-                    resolve('');  // ✅ Return empty instead of reject
-                });
-                pdfParser.parseBuffer(buffer);
-            });
-        } else {
-            content = fs.readFileSync(file.path, 'utf8').slice(0, 15000);
-        }
-
-        if (!content.trim()) {
-            return next(new appError('No text extracted from file', 400));
-        }
-        console.log('📄 Content preview:', content.slice(0, 300));
-    } catch (err) {
-        console.error('❌ Content extraction failed:', err);
-        return next(new appError('Failed to extract text from file', 400));
+    const user = await User.findById(req.user.id);
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
     }
 
-    // BULLETPROOF Groq prompt
-    const prompt = `Generate EXACTLY ${count} quiz questions from this text. 
+    // ✅ SEARCH EVERYWHERE for the quiz
+    let quizData = null;
 
-IMPORTANT: RETURN ONLY VALID JSON ARRAY. NO OTHER TEXT. NO MARKDOWN. NO EXPLANATIONS.
+    // 1. Check completedQuizzes by ID or quizId
+    quizData = user.completedQuizzes.find(q =>
+        q._id?.toString() === completedId ||
+        q.quizId === completedId ||
+        completedId.includes(q.quizId || '')
+    );
 
-TEXT: ${content.slice(0, 10000)}
+    // 2. Check activity by ID or quizId
+    if (!quizData) {
+        const activity = user.activity.find(a =>
+            a._id?.toString() === completedId ||
+            a.quizId === completedId ||
+            a.description?.includes(completedId)
+        );
 
-${type === 'tf' ? 'TRUE/FALSE: options must be EXACTLY ["True", "False"]' : ''}
-${type === 'mcq' ? 'MCQ: EXACTLY 4 options: ["A) text", "B) text", "C) text", "D) text"]' : ''}
-
-JSON FORMAT:
-[
-  {
-    "question": "Question text here?",
-    "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
-    "correctAnswer": "A) Option 1",
-    "explanation": "Why this is correct"
-  }
-]`;
-
-    console.log('📝 Sending to Groq...');
-
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',  // ✅ CURRENT 2026 model
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 3000,
-            temperature: 0.1
-        })
-
-    });
-
-    if (!groqResponse.ok) {
-        const errorData = await groqResponse.json();
-        console.error('❌ Groq API Error:', errorData);
-        return next(new appError(`AI service error: ${errorData.error?.message || 'Unknown error'}`, 500));
-    }
-
-    const groqData = await groqResponse.json();
-    console.log('📥 Groq raw response preview:', groqData.choices[0]?.message?.content?.slice(0, 300));
-
-    if (!groqData.choices?.[0]?.message?.content) {
-        return next(new appError('AI service failed to generate questions', 500));
-    }
-
-    let questions;
-    try {
-        // SUPER CLEAN parsing
-        let rawContent = groqData.choices[0].message.content.trim();
-
-        // Remove ALL common wrappers
-        rawContent = rawContent
-            .replace(/```json|```|json|```javascript/gi, '')
-            .replace(/^\s*[\[\{].*?[\]\}]\s*$/s, match => match.trim())
-            .trim();
-
-        console.log('🧹 Cleaned content preview:', rawContent.slice(0, 300));
-
-        questions = JSON.parse(rawContent);
-
-        if (!Array.isArray(questions) || questions.length === 0 || questions.length > parseInt(count) + 2) {
-            throw new Error(`Expected ${count} questions, got ${questions.length}`);
+        if (activity) {
+            quizData = {
+                fileName: activity.fileName || 'Document Quiz',
+                score: activity.score || 0,
+                totalQuestions: activity.totalQuestions || 0,
+                percentage: activity.percentage || 0,
+                description: activity.description,
+                questions: [], // No questions stored in activity
+                userAnswers: []
+            };
         }
+    }
 
-        // Validate structure
-        questions.slice(0, parseInt(count)).forEach((q, i) => {
-            if (!q.question || !Array.isArray(q.options) || !q.correctAnswer || !q.explanation) {
-                console.error(`❌ Invalid question ${i + 1}:`, q);
-                throw new Error(`Question ${i + 1} missing required fields: question, options, correctAnswer, explanation`);
-            }
+    if (!quizData) {
+        console.log('❌ Quiz not found in:', {
+            completedQuizzes: user.completedQuizzes.length,
+            activity: user.activity.length
         });
-
-    } catch (parseError) {
-        console.error('❌ JSON Parse Error:', parseError.message);
-        console.error('💾 FULL raw Groq response:\n', groqData.choices.message.content);
-        return next(new appError(`AI returned invalid format: ${parseError.message}`, 500));
+        return res.status(404).json({ error: 'Quiz not found' });
     }
 
-    const quizId = `quiz_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // ✅ Format response for frontend
+    const response = {
+        fileName: quizData.fileName,
+        score: quizData.score || 0,
+        totalQuestions: quizData.totalQuestions || quizData.questions?.length || 0,
+        percentage: quizData.percentage || 0,
+        description: quizData.description || `${quizData.score}/${quizData.totalQuestions}`,
+        questions: quizData.questions || [],
+        userAnswers: quizData.userAnswers || []
+    };
 
-    console.log('✅ Quiz generated successfully:', questions.length, 'questions');
-
-    res.json({
-        success: true,
-        quizId,
-        questions: questions.slice(0, parseInt(count)), // Trim to exact count
-        type,
-        time: parseInt(time),
-        count: parseInt(count)
+    console.log('✅ Quiz review served:', {
+        id: completedId,
+        fileName: response.fileName,
+        score: response.score,
+        hasQuestions: response.questions.length > 0
     });
+
+    res.json(response);
 }));
 
-module.exports = router
+module.exports = router;

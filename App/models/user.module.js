@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema(
             required: true,
             select: false,
         },
+
         avatar: {
             type: String,
         },
@@ -32,12 +33,14 @@ const userSchema = new mongoose.Schema(
             enum: [userRoles.USER, userRoles.ADMIN, userRoles.MANAGER],
             default: userRoles.USER,
         },
+
         enrolledTracks: [
             {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Track",
             },
         ],
+
         progress: [
             {
                 track: {
@@ -52,12 +55,14 @@ const userSchema = new mongoose.Schema(
                 ],
             },
         ],
+
         completedTracks: [
             {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Track",
             },
         ],
+
         activity: [
             {
                 type: { type: String, enum: ['lesson', 'track', 'quiz', 'upload'], required: true },
@@ -66,27 +71,44 @@ const userSchema = new mongoose.Schema(
                 timestamp: { type: Date, default: Date.now }
             }
         ],
+
         xp: { type: Number, default: 0 },
         streak: {
             current: { type: Number, default: 0 },
             lastLogin: { type: Date }
         },
+
         dailyXP: {
             date: { type: String },
             amount: { type: Number, default: 0 }
         },
+
         completedTrackQuizzes: [
             {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Track",
             },
         ],
+
         enteredLessons: [
             {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Lesson",
             }
-        ]
+        ],
+
+        completedQuizzes: [
+            {
+                quizId: String,
+                score: Number,
+                total: Number,
+                percentage: Number,
+                date: { type: Date, default: Date.now },
+                questions: [Object] // Store quiz questions
+            }
+        ],
+        
+        xpGainedFromQuiz: { type: Number, default: 0 }
     },
     { timestamps: true }
 );
