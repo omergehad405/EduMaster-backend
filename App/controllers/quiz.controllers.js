@@ -50,7 +50,11 @@ const generateQuiz = asyncWrapper(async (req, res, next) => {
     }
 
     // BULLETPROOF Groq prompt
-    const prompt = `Generate EXACTLY ${count} quiz questions from this text. 
+    const prompt = `Generate EXACTLY ${count} UNIQUE and DIFFERENT quiz questions from this text.
+
+Questions must be different each time.
+    
+Avoid repeating previous questions.
 
 IMPORTANT: RETURN ONLY VALID JSON ARRAY. NO OTHER TEXT. NO MARKDOWN. NO EXPLANATIONS.
 
@@ -81,7 +85,7 @@ JSON FORMAT:
             model: 'llama-3.3-70b-versatile',
             messages: [{ role: 'user', content: prompt }],
             max_tokens: 3000,
-            temperature: 0.1
+            temperature: 0.7
         })
     });
 
