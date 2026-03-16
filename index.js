@@ -7,22 +7,13 @@ const PORT = process.env.PORT || 5000;
 const path = require("path");
 
 //middleware 
-const frontendOrigins = (process.env.FRONTEND_ORIGINS || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
 app.use(
     cors({
-        origin: (origin, callback) => {
-            if (!origin) return callback(null, true);
-            if (frontendOrigins.length === 0) return callback(null, true);
-            if (frontendOrigins.includes(origin)) return callback(null, true);
-            return callback(new Error("Not allowed by CORS"));
-        },
-        credentials: true,
+        origin: '*',
+        credentials: false,
     })
 );
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
