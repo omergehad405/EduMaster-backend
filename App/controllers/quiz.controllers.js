@@ -1,5 +1,6 @@
 const fs = require('fs');
 const PDFParser = require('pdf2json');
+const mammoth = require('mammoth');
 const appError = require("../../utils/appError")
 const asyncWrapper = require("../middlewares/asyncWrapper")
 const User = require("../models/user.module")
@@ -25,7 +26,11 @@ const generateQuiz = asyncWrapper(async (req, res, next) => {
             content = await new Promise((resolve, reject) => {
                 pdfParser.on('pdfParser_dataReady', (pdfData) => {
                     const text = pdfData.Pages?.map(page =>
-                        page.Texts?.map(t => decodeURIComponent(t.R?.[0]?.T || '')).join(' ')
+                        page.Texts?.map(t => {
+                            const raw = t.R?.[0]?.T || '';
+                            try { return decodeURIComponent(raw); }
+                            catch { return raw; }
+                        }).join(' ')
                     ).join('\n\n') || '';
                     console.log('✅ PDF extracted:', text.slice(0, 200));
                     resolve(text.slice(0, 15000));
@@ -36,8 +41,20 @@ const generateQuiz = asyncWrapper(async (req, res, next) => {
                 });
                 pdfParser.parseBuffer(buffer);
             });
+        } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.originalname.endsWith('.docx')) {
+            // Word Document extraction
+            const result = await mammoth.extractRawText({ path: file.path });
+            content = result.value;
+            console.log('✅ Word extracted:', content.slice(0, 200));
         } else {
-            content = fs.readFileSync(file.path, 'utf8').slice(0, 15000);
+            // Generic fallback: Try reading as text
+            try {
+                content = fs.readFileSync(file.path, 'utf8').slice(0, 15000);
+                console.log('✅ Generic text extracted:', content.slice(0, 200));
+            } catch (err) {
+                console.error('❌ Generic extraction failed:', err);
+                return next(new appError('Could not extract text from this file format', 400));
+            }
         }
 
         if (!content.trim()) {

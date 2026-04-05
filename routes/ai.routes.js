@@ -2,6 +2,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const PDFParser = require("pdf2json");
+const mammoth = require("mammoth");
 const upload = require("../App/middlewares/upload");
 const asyncWrapper = require("../App/middlewares/asyncWrapper");
 const appError = require("../utils/appError");
@@ -50,7 +51,11 @@ router.post(
                             text = pdfData.Pages
                                 .map(page =>
                                     page.Texts
-                                        ?.map(t => t.R?.[0]?.T ? decodeURIComponent(t.R[0].T) : "")
+                                        ?.map(t => {
+                                            if (!t.R?.[0]?.T) return "";
+                                            try { return decodeURIComponent(t.R[0].T); }
+                                            catch { return t.R[0].T; }
+                                        })
                                         .filter(Boolean)
                                         .join(" ")
                                 )
@@ -68,12 +73,22 @@ router.post(
 
                 fullPrompt += `\n\n[PDF CONTENT]\n${pdfText.slice(0, 8000)}`;
 
-            } else if (file.mimetype === "text/plain") {
-                const txt = fs.readFileSync(file.path, "utf8").trim();
-                if (!txt) return next(new appError("Text file is empty", 400));
-                fullPrompt += `\n\n[TEXT FILE]\n${txt.slice(0, 8000)}`;
+            } else if (file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.originalname.endsWith(".docx")) {
+                const result = await mammoth.extractRawText({ path: file.path });
+                const wordText = result.value;
+                if (!wordText.trim()) return next(new appError("Word file is empty", 400));
+                fullPrompt += `\n\n[WORD FILE CONTENT]\n${wordText.slice(0, 8000)}`;
+
             } else {
-                return next(new appError("Only PDF/text files supported", 400));
+                // Try reading as generic text
+                try {
+                    const txt = fs.readFileSync(file.path, "utf8").trim();
+                    if (!txt) return next(new appError("File is empty", 400));
+                    fullPrompt += `\n\n[FILE CONTENT]\n${txt.slice(0, 8000)}`;
+                } catch (err) {
+                    console.error("❌ Generic extraction failed:", err);
+                    return next(new appError("Failed to read this file format as text", 400));
+                }
             }
         }
 
