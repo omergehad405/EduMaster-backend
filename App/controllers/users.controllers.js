@@ -86,6 +86,7 @@ const register = asyncWrapper(async (req, res, next) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    //"passowrd" => $password
     // Save avatar path if file uploaded
     const avatarUrl = req.file ? `/uploads/${req.file.filename}` : null;
 

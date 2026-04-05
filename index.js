@@ -6,13 +6,18 @@ require("dotenv").config();
 const PORT = process.env.PORT || 5000;
 const path = require("path");
 
-//middleware 
+// ✅ CORS middleware FIRST — before anything else
 app.use(
     cors({
         origin: '*',
         credentials: false,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
     })
 );
+
+// ✅ Explicitly handle ALL preflight requests
+app.options(/.*/, cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
