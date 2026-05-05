@@ -75,7 +75,7 @@ const getAllUsers = asyncWrapper(async (req, res, next) => {
 })
 
 const register = asyncWrapper(async (req, res, next) => {
-    const { username, email, password, role } = req.body;
+    const { username, email, password, role, firstName, lastName, birthDate, phone, country } = req.body;
 
     if (!username || !email || !password) {
         return next(new appError("All fields are required", 400));
@@ -86,8 +86,6 @@ const register = asyncWrapper(async (req, res, next) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    //"passowrd" => $password
-    // Save avatar path if file uploaded
     const avatarUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
     const newUser = await User.create({
@@ -95,7 +93,12 @@ const register = asyncWrapper(async (req, res, next) => {
         email,
         password: hashedPassword,
         avatar: avatarUrl,
-        role
+        role,
+        firstName,
+        lastName,
+        birthDate,
+        phone,
+        country
     });
 
     const token = generateJWT({
@@ -421,6 +424,32 @@ const enterLesson = asyncWrapper(async (req, res, next) => {
     });
 });
 
+const updateProfile = asyncWrapper(async (req, res, next) => {
+    const { firstName, lastName, birthDate, gender, phone, country } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return next(new appError("User not found", 404));
+
+    if (firstName !== undefined) user.firstName = firstName;
+    if (lastName !== undefined) user.lastName = lastName;
+    if (birthDate !== undefined) user.birthDate = birthDate;
+    if (gender !== undefined) user.gender = gender;
+    if (phone !== undefined) user.phone = phone;
+    if (country !== undefined) user.country = country;
+
+    if (req.file) {
+        user.avatar = `/uploads/${req.file.filename}`;
+    }
+
+    await user.save();
+
+    const { password: _, ...userData } = user.toObject();
+
+    res.json({
+        status: httpStatusText.SUCCESS,
+        data: { user: userData }
+    });
+});
+
 module.exports = {
     getAllUsers,
     register,
@@ -429,6 +458,7 @@ module.exports = {
     enrollInTrack,
     completeLesson,
     updateAvatar,
+    updateProfile,
     completeQuiz,
     completeFinalQuiz,
     enterLesson

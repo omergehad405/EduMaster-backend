@@ -9,6 +9,7 @@ const {
     getMe,
     completeLesson,
     updateAvatar,
+    updateProfile,
     completeQuiz,
     completeFinalQuiz,
     enterLesson
@@ -34,6 +35,13 @@ router.post('/complete-quiz', verifyToken, completeQuiz);
 router.post('/complete-final-quiz', verifyToken, completeFinalQuiz);
 
 router.post('/enter-lesson', verifyToken, enterLesson);
+
+router.patch(
+    "/update-profile",
+    verifyToken,
+    upload.single("avatar"),
+    updateProfile
+);
 
 router.post(
     "/upload-avatar",

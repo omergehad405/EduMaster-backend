@@ -7,6 +7,12 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true, select: false },
     avatar: { type: String },
     role: { type: String, enum: [userRoles.USER, userRoles.ADMIN, userRoles.MANAGER], default: userRoles.USER },
+    firstName: { type: String, trim: true },
+    lastName: { type: String, trim: true },
+    birthDate: { type: Date },
+    gender: { type: String, enum: ['male', 'female'] },
+    phone: { type: String, trim: true },
+    country: { type: String, trim: true },
     enrolledTracks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Track" }],
     progress: [{
         track: { type: mongoose.Schema.Types.ObjectId, ref: "Track" },
