@@ -9,10 +9,16 @@ router.post("/", asyncWrapper(async (req, res, next) => {
         return next(new appError("GROQ_API_KEY missing from .env", 500));
     }
 
-    const { message } = req.body;
+    const { message, fileContext, level } = req.body;
     if (!message || typeof message !== "string") {
         return next(new appError("message is required", 400));
     }
+
+    const systemPrompt = `You are an educational assistant. 
+    ${fileContext ? `The student is currently studying a file with this content: ${fileContext.slice(0, 5000)}` : ""}
+    ${level ? `The student's current learning level is ${level}. Adapt your explanations to be suitable for this level.` : ""}
+    LANGUAGE RULE: Always respond in the SAME LANGUAGE as the student's message or the provided file context.
+    Answer concisely and clearly.`;
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -22,8 +28,11 @@ router.post("/", asyncWrapper(async (req, res, next) => {
         },
         body: JSON.stringify({
             model: "llama-3.3-70b-versatile",
-            messages: [{ role: "user", content: message }],
-            max_tokens: 200,
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message }
+            ],
+            max_tokens: 500,
             temperature: 0.7
         })
     });

@@ -28,7 +28,7 @@ router.post(
             return next(new appError("GROQ_API_KEY missing from .env", 500));
         }
 
-        const { message } = req.body;
+        const { message, difficulty = "medium" } = req.body;
         const file = req.file;
 
         if ((!message || typeof message !== "string") && !file) {
@@ -36,7 +36,7 @@ router.post(
         }
 
         // Build full prompt
-        let fullPrompt = message || "Analyze this content: ";
+        let contentText = "";
 
         if (file) {
             if (file.mimetype === "application/pdf") {
@@ -67,30 +67,22 @@ router.post(
                     pdfParser.parseBuffer(buffer);
                 });
 
-                if (!pdfText.trim()) {
-                    return next(new appError("Could not extract text from PDF", 400));
-                }
-
-                fullPrompt += `\n\n[PDF CONTENT]\n${pdfText.slice(0, 8000)}`;
+                if (pdfText.trim()) contentText = pdfText.slice(0, 8000);
 
             } else if (file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.originalname.endsWith(".docx")) {
                 const result = await mammoth.extractRawText({ path: file.path });
-                const wordText = result.value;
-                if (!wordText.trim()) return next(new appError("Word file is empty", 400));
-                fullPrompt += `\n\n[WORD FILE CONTENT]\n${wordText.slice(0, 8000)}`;
-
+                contentText = result.value.slice(0, 8000);
             } else {
-                // Try reading as generic text
                 try {
-                    const txt = fs.readFileSync(file.path, "utf8").trim();
-                    if (!txt) return next(new appError("File is empty", 400));
-                    fullPrompt += `\n\n[FILE CONTENT]\n${txt.slice(0, 8000)}`;
-                } catch (err) {
-                    console.error("❌ Generic extraction failed:", err);
-                    return next(new appError("Failed to read this file format as text", 400));
-                }
+                    contentText = fs.readFileSync(file.path, "utf8").slice(0, 8000);
+                } catch (err) {}
             }
         }
+
+        const systemMessage = `You are a helpful educational AI assistant. 
+        The student is at a ${difficulty.toUpperCase()} level. 
+        Adapt your explanations and language to be appropriate for this level.
+        ${contentText ? `\n\nCONTEXT FROM UPLOADED FILE:\n${contentText}` : ""}`;
 
         // ✅ GROQ API - Lightning fast & FREE
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -101,8 +93,11 @@ router.post(
             },
             body: JSON.stringify({
                 model: "llama-3.3-70b-versatile",
-                messages: [{ role: "user", content: fullPrompt }],
-                max_tokens: 500,
+                messages: [
+                    { role: "system", content: systemMessage },
+                    { role: "user", content: message || "Analyze the attached content." }
+                ],
+                max_tokens: 800,
                 temperature: 0.7
             })
         });

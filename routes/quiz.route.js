@@ -8,6 +8,7 @@ const asyncWrapper = require("../App/middlewares/asyncWrapper");
 const User = require("../App/models/user.module");
 
 router.post('/generate', upload.single('file'), quizController.generateQuiz);
+router.post('/assessment', upload.single('file'), quizController.generateAssessment);
 router.post('/submit', verifyToken, quizController.submitQuiz);
 router.get('/my', verifyToken, quizController.my);
 router.get('/completed/:completedId', verifyToken, asyncWrapper(async (req, res) => {
